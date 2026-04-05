@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ':*)",
+      "Bash(python3 export_sessions.py)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\User\\.claude\\projects\\c--Users-User-RdlcRendererWpf"
+    ]
+  }
+}
