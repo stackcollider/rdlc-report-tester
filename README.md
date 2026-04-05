@@ -175,7 +175,7 @@ BC XML DataSource → RdlcRendererWpf → PDF Preview
 
 Open the app, drag and drop `.rdlc` and `.xml`, see the report. No deployments, no BC sessions.
 
-![RDLC Report Tester v1.01 — PDF preview with test data](RDLC Pint Screen.png)
+![RDLC Report Tester v1.01 — PDF preview with test data](RDLC%20Print%20Screen.png)
 
 A careful reader will spot `StackCollider Latvia SIA` in the vendor list. An easter egg. Test data deserves character too.
 
