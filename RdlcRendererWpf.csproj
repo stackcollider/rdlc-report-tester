@@ -8,8 +8,8 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>RdlcRendererWpf</AssemblyName>
     <ApplicationIcon>StackCollaider.ico</ApplicationIcon>
-    <Version>1.01</Version>
-    <FileVersion>1.01</FileVersion>
+    <Version>2.01</Version>
+    <FileVersion>2.01</FileVersion>
     <ProductName>RDLC Report Tester</ProductName>
     <Description>A development tool for testing RDLC reports with XML DataSource from Business Central</Description>
     <License>MIT</License>
@@ -20,6 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="README.md" />
     <None Remove="StackCollaider.ico" />
   </ItemGroup>
 

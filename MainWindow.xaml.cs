@@ -1,5 +1,4 @@
 using System.Data;
-using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -184,74 +183,56 @@ public partial class MainWindow : Window
 
     private bool TryLoadXmlAsRowTable(XDocument doc)
     {
-        var dataItems = doc.Descendants("DataItem").ToList();
-        if (!dataItems.Any())
-            return false;
+        XElement? root = doc.Root?.Name.LocalName == "DataItems"
+            ? doc.Root
+            : doc.Root?.Element("DataItems")
+              ?? doc.Descendants("DataItems").FirstOrDefault();
 
-        var rows = dataItems
-            .Select(di => di.Element("Columns")?.Elements("Column").ToList())
-            .Where(c => c != null && c.Any())
-            .ToList();
+        if (root == null) return false;
 
-        if (!rows.Any())
-            return false;
+        // Recursively collect denormalized rows: each leaf DataItem row inherits parent column values
+        var denormRows = new List<List<(string name, bool hasDecFmt, string value)>>();
+        ReportRenderer.CollectDenormalizedRows(root, [], denormRows);
 
-        var maxColumns = rows.Max(r => r.Count);
+        if (!denormRows.Any()) return false;
 
-        // Headers are Column name attributes (preferred)
-        var firstRow = rows.First();
-        var headerNames = Enumerable.Range(0, maxColumns)
-            .Select(i =>
-            {
-                var col = i < firstRow.Count ? firstRow[i] : null;
-                return col?.Attribute("name")?.Value ?? $"Column {i + 1}";
-            })
-            .ToList();
+        // Build union column schema preserving first-appearance order
+        var colOrder  = new List<string>();
+        var colDecFmt = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in denormRows)
+            foreach (var (name, hasDecFmt, _) in row)
+                if (!colDecFmt.ContainsKey(name))
+                {
+                    colDecFmt[name] = hasDecFmt;
+                    colOrder.Add(name);
+                }
 
-        // If any header is missing and firstRow has values that look like names (non-numeric / non-date), use them
-        for (int i = 0; i < maxColumns; i++)
+        // Infer type per column from all values across all rows
+        var colTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string colName in colOrder)
         {
-            if (string.IsNullOrWhiteSpace(headerNames[i]) && i < firstRow.Count)
-            {
-                var candidate = firstRow[i].Value?.Trim();
-                if (!string.IsNullOrWhiteSpace(candidate) && !TryParseValue(candidate))
-                    headerNames[i] = candidate;
-            }
+            var singleColRows = denormRows
+                .Select(r => new List<string> { r.FirstOrDefault(c => c.name == colName).value ?? "" })
+                .ToList();
+            var t = ReportRenderer.InferColumnType(singleColRows, 0, colDecFmt[colName]);
+            colTypes[colName] = t == typeof(int)      ? "int"      :
+                                t == typeof(decimal)  ? "decimal"  :
+                                t == typeof(DateTime) ? "datetime" : "string";
         }
 
-        // Determine type: prefer explicit attribute, then first non-empty value across all rows
-        var types = Enumerable.Range(0, maxColumns)
-            .Select(i =>
-            {
-                foreach (var r in rows)
-                {
-                    if (i >= r.Count) continue;
-                    var typAttr = r[i].Attribute("datatype")?.Value ?? r[i].Attribute("decimalformatter")?.Value;
-                    if (!string.IsNullOrWhiteSpace(typAttr))
-                        return typAttr;
-                }
-
-                foreach (var r in rows)
-                {
-                    if (i >= r.Count) continue;
-                    var value = r[i].Value;
-                    if (!string.IsNullOrWhiteSpace(value))
-                        return ReportRenderer.InferTypeName(value);
-                }
-
-                return "null";
-            })
-            .ToList();
-
         var table = new DataTable();
-        for (int i = 0; i < maxColumns; i++)
-            table.Columns.Add($"{headerNames[i]} ({types[i]})", typeof(string));
+        foreach (string colName in colOrder)
+            table.Columns.Add($"{colName} ({colTypes[colName]})", typeof(string));
 
-        foreach (var rowColumns in rows)
+        foreach (var rowData in denormRows)
         {
             var row = table.NewRow();
-            for (int i = 0; i < maxColumns; i++)
-                row[i] = i < rowColumns.Count ? rowColumns[i].Value : string.Empty;
+            foreach (var (name, _, value) in rowData)
+            {
+                string displayName = $"{name} ({colTypes[name]})";
+                if (table.Columns.Contains(displayName))
+                    row[displayName] = value;
+            }
             table.Rows.Add(row);
         }
 
@@ -262,16 +243,8 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private static bool TryParseValue(string value)
-    {
-        if (bool.TryParse(value, out _)) return true;
-        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)) return true;
-        if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out _)) return true;
-        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out _)) return true;
-        return false;
-    }
 
-    private bool TryLoadXmlAsPivotColumnTable(XDocument doc)
+private bool TryLoadXmlAsPivotColumnTable(XDocument doc)
     {
         var deepGroup = doc.Descendants()
             .Where(e => e.Elements().Any() && e.Elements().All(x => !x.Elements().Any()))

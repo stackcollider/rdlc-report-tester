@@ -1,7 +1,7 @@
 [Setup]
 AppId={{A3F2C1D4-7B8E-4F6A-9D2C-1E5B8A3F7C9D}
 AppName=RDLC Report Tester
-AppVersion=1.01
+AppVersion=2.01
 AppPublisher=StackCollaider
 AppPublisherURL=https://github.com/StackCollaider
 AppSupportURL=https://github.com/StackCollaider
@@ -12,7 +12,7 @@ LicenseFile=LICENSE.txt
 SetupIconFile=StackCollaider.ico
 UninstallDisplayIcon={app}\RdlcRendererWpf.exe
 UninstallDisplayName=RDLC Report Tester
-OutputBaseFilename=RdlcReportTester-Setup-1.01
+OutputBaseFilename=RdlcReportTester-Setup-2.01
 OutputDir=.\installer_output
 Compression=lzma2/ultra64
 SolidCompression=yes

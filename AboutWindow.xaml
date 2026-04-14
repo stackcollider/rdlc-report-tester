@@ -12,7 +12,7 @@
         <TextBlock Text="RDLC Report Tester" FontSize="24" FontWeight="Bold" Foreground="#111827" Margin="0,0,0,10"/>
         
         <StackPanel Margin="0,0,0,20">
-            <TextBlock Text="Version 1.01" FontSize="13" Foreground="#374151"/>
+            <TextBlock Text="Version 2.01" FontSize="13" Foreground="#374151"/>
             <TextBlock Text="2026.04.02" FontSize="13" Foreground="#374151" Margin="0,3,0,0"/>
             <TextBlock Text="MIT License" FontSize="13" Foreground="#374151" Margin="0,3,0,0"/>
         </StackPanel>

@@ -53,67 +53,74 @@ public static class ReportRenderer
         if (dataItemsRoot == null)
             throw new InvalidDataException("Cannot find <DataItems> element in XML.");
 
-        // Проход 1: собрать все сырые значения и атрибуты по таблицам
-        // rawData[tableName] = list of rows, row = list of (name, decimalformatter, value)
-        var rawData = new Dictionary<string, (List<(string name, bool hasDecimalFmt)> schema, List<List<string>> rows)>(StringComparer.Ordinal);
+        // Рекурсивно собираем денормализованные строки: каждая листовая строка
+        // наследует значения колонок родительских DataItem-ов.
+        var denormRows = new List<List<(string name, bool hasDecimalFmt, string value)>>();
+        CollectDenormalizedRows(dataItemsRoot, [], denormRows);
 
-        foreach (XElement dataItem in dataItemsRoot.Elements("DataItem"))
-        {
-            string tableName = dataItem.Attribute("name")?.Value
-                ?? throw new InvalidDataException("<DataItem> is missing the 'name' attribute.");
+        if (denormRows.Count == 0)
+            return [];
 
-            if (!rawData.ContainsKey(tableName))
-                rawData[tableName] = ([], []);
-
-            var (schema, rows) = rawData[tableName];
-
-            foreach (XElement columnsBlock in dataItem.Elements("Columns"))
-            {
-                List<XElement> cols = [.. columnsBlock.Elements("Column")];
-
-                if (schema.Count == 0)
-                    foreach (XElement col in cols)
-                    {
-                        string name = col.Attribute("name")?.Value
-                            ?? throw new InvalidDataException("<Column> is missing the 'name' attribute.");
-                        schema.Add((name, col.Attribute("decimalformatter") != null));
-                    }
-
-                rows.Add(cols.Select(c => c.Value).ToList());
-            }
-        }
-
-        // Проход 2: определить тип каждой колонки и создать DataTable
-        var tables = new List<DataTable>();
-
-        foreach (var (tableName, (schema, rows)) in rawData)
-        {
-            DataTable table = new(tableName);
-
-            // Определяем тип колонки по всем строкам
-            for (int ci = 0; ci < schema.Count; ci++)
-            {
-                var (colName, hasDecimalFmt) = schema[ci];
-                Type colType = InferColumnType(rows, ci, hasDecimalFmt);
-                table.Columns.Add(colName, colType);
-            }
-
-            // Заполняем строки
-            foreach (List<string> rowValues in rows)
-            {
-                DataRow row = table.NewRow();
-                for (int ci = 0; ci < schema.Count && ci < rowValues.Count; ci++)
+        // Определяем уникальные колонки (в порядке первого появления)
+        var colOrder   = new List<string>();
+        var colDecFmt  = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in denormRows)
+            foreach (var (name, hasDecimalFmt, _) in row)
+                if (!colDecFmt.ContainsKey(name))
                 {
-                    string colName = schema[ci].name;
-                    row[colName] = ConvertValue(rowValues[ci], table.Columns[colName]!.DataType);
+                    colDecFmt[name] = hasDecimalFmt;
+                    colOrder.Add(name);
                 }
-                table.Rows.Add(row);
-            }
 
-            tables.Add(table);
+        // Определяем типы по всем значениям каждой колонки
+        var colTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+        foreach (string colName in colOrder)
+        {
+            var singleColRows = denormRows
+                .Select(r => new List<string> { r.FirstOrDefault(c => c.name == colName).value ?? "" })
+                .ToList();
+            colTypes[colName] = InferColumnType(singleColRows, 0, colDecFmt[colName]);
         }
 
-        return tables;
+        // Создаём одну плоскую DataTable
+        DataTable table = new("DataSet_Result");
+        foreach (string colName in colOrder)
+            table.Columns.Add(colName, colTypes[colName]);
+
+        foreach (var rowData in denormRows)
+        {
+            DataRow row = table.NewRow();
+            foreach (var (name, _, value) in rowData)
+                if (table.Columns.Contains(name))
+                    row[name] = ConvertValue(value, colTypes[name]);
+            table.Rows.Add(row);
+        }
+
+        return [table];
+    }
+
+    internal static void CollectDenormalizedRows(
+        XElement dataItemsEl,
+        List<(string name, bool hasDecimalFmt, string value)> inherited,
+        List<List<(string name, bool hasDecimalFmt, string value)>> result)
+    {
+        foreach (XElement di in dataItemsEl.Elements("DataItem"))
+        {
+            var ownCols = (di.Element("Columns")?.Elements("Column") ?? [])
+                .Select(c => (
+                    c.Attribute("name")?.Value ?? "?",
+                    c.Attribute("decimalformatter") != null,
+                    c.Value))
+                .ToList();
+
+            var combined = new List<(string, bool, string)>([..inherited, ..ownCols]);
+
+            XElement? nested = di.Element("DataItems");
+            if (nested != null && nested.Elements("DataItem").Any())
+                CollectDenormalizedRows(nested, combined, result);
+            else
+                result.Add(combined);
+        }
     }
 
     private static readonly string[] DateFormats =
